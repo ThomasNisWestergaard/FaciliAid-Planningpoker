@@ -12,7 +12,10 @@ export function supabaseAdmin() {
     throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
   }
 
-  return createClient(url, serviceRoleKey, {
+  const safeUrl: string = url;
+  const safeServiceRoleKey: string = serviceRoleKey;
+
+  return createClient(safeUrl, safeServiceRoleKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
