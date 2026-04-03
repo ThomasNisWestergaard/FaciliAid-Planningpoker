@@ -25,8 +25,25 @@ export async function POST(request: NextRequest) {
   const hostToken = randomToken();
   const participantToken = randomToken();
 
-  const sessionRes = await supabase.from("sessions").insert({ session_code: sessionCode, title, host_token: hostToken, current_round_number: 1, is_active: true }).select("id, session_code").single();
-  if (sessionRes.error || !sessionRes.data) return NextResponse.json({ error: sessionRes.error?.message || "Could not create session" }, { status: 500 });
+  const sessionRes = await supabase
+  .from("sessions")
+  .insert({
+    session_code: sessionCode,
+    title,
+    host_token: hostToken,
+    current_round_number: 1,
+    is_active: true,
+  })
+  .select("id, session_code")
+  .single();
+
+if (sessionRes.error || !sessionRes.data) {
+  console.error("SESSION INSERT ERROR", sessionRes.error);
+  return NextResponse.json(
+    { error: sessionRes.error?.message || "Could not create session" },
+    { status: 500 }
+  );
+}
 
   const session = sessionRes.data;
   const participantRes = await supabase.from("participants").insert({ session_id: session.id, participant_token: participantToken, name: hostName, avatar, is_host: true }).select("id").single();
