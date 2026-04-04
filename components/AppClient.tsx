@@ -6,7 +6,15 @@ import { AVATARS, avatarEmoji, CARD_VALUES } from "@/lib/constants";
 type StateResponse = {
   session: { id: number; session_code: string; title: string };
   round: { id: number; round_number: number; issue_title: string | null; is_revealed: boolean };
-  participants: Array<{ id: number; name: string; avatar: string; is_host: boolean; participant_token: string; vote_value: string | null; has_voted: boolean }>;
+  participants: Array<{
+    id: number;
+    name: string;
+    avatar: string;
+    is_host: boolean;
+    participant_token: string;
+    vote_value: string | null;
+    has_voted: boolean;
+  }>;
   myVote: string | null;
 };
 
@@ -14,20 +22,46 @@ function getStoredIdentity(sessionCode: string) {
   try {
     const raw = localStorage.getItem(`pp:${sessionCode}`);
     return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
+
 function setStoredIdentity(sessionCode: string, value: unknown) {
   localStorage.setItem(`pp:${sessionCode}`, JSON.stringify(value));
 }
+
 async function request(path: string, init?: RequestInit) {
-  const res = await fetch(path, { ...init, headers: { "Content-Type": "application/json", ...(init?.headers || {}) } });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "Request failed");
+  const res = await fetch(path, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers || {}),
+    },
+  });
+
+  const text = await res.text();
+  let data: any = {};
+
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text || "Request failed" };
+  }
+
+  if (!res.ok) {
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+
   return data;
 }
 
 export default function AppClient() {
-  const initialCode = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("session")?.toUpperCase() || "" : "";
+  const initialCode =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("session")?.toUpperCase() || ""
+      : "";
+
   const [sessionCode, setSessionCode] = useState(initialCode);
   const [joinCode, setJoinCode] = useState(initialCode);
   const [sessionTitle, setSessionTitle] = useState("Sprint Planning");
@@ -38,30 +72,64 @@ export default function AppClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const identity = useMemo(() => (sessionCode ? getStoredIdentity(sessionCode) : null), [sessionCode, state]);
+  const identity = useMemo(
+    () => (sessionCode ? getStoredIdentity(sessionCode) : null),
+    [sessionCode]
+  );
+
+  const hasIdentity = !!identity?.participantToken;
+  const shouldShowJoinScreen = !!sessionCode && !hasIdentity;
 
   async function refreshState(code = sessionCode) {
     if (!code) return;
+
     const id = getStoredIdentity(code);
-    const data = await request(`/api/session/state?sessionCode=${encodeURIComponent(code)}&participantToken=${encodeURIComponent(id?.participantToken || "")}`);
+    const data = await request(
+      `/api/session/state?sessionCode=${encodeURIComponent(code)}&participantToken=${encodeURIComponent(
+        id?.participantToken || ""
+      )}`
+    );
+
     setState(data);
     setError("");
   }
 
   useEffect(() => {
-    if (!sessionCode) return;
+    if (!sessionCode || !identity?.participantToken) return;
+
     refreshState(sessionCode).catch((e) => setError(e.message));
-    const poll = setInterval(() => { refreshState(sessionCode).catch(() => {}); }, 2500);
+
+    const poll = setInterval(() => {
+      refreshState(sessionCode).catch(() => {});
+    }, 2500);
+
     return () => clearInterval(poll);
-  }, [sessionCode]);
+  }, [sessionCode, identity?.participantToken]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
+
     try {
-      const data = await request("/api/session/create", { method: "POST", body: JSON.stringify({ title: sessionTitle, hostName: displayName || "Host", avatar, issueTitle }) });
-      setStoredIdentity(data.sessionCode, { participantToken: data.participantToken, hostToken: data.hostToken, isHost: true, name: data.hostName, avatar });
+      const data = await request("/api/session/create", {
+        method: "POST",
+        body: JSON.stringify({
+          title: sessionTitle,
+          hostName: displayName || "Host",
+          avatar,
+          issueTitle,
+        }),
+      });
+
+      setStoredIdentity(data.sessionCode, {
+        participantToken: data.participantToken,
+        hostToken: data.hostToken,
+        isHost: true,
+        name: data.hostName,
+        avatar,
+      });
+
       setSessionCode(data.sessionCode);
       setJoinCode(data.sessionCode);
       window.history.replaceState({}, "", `?session=${data.sessionCode}`);
@@ -77,11 +145,28 @@ export default function AppClient() {
     e.preventDefault();
     setLoading(true);
     setError("");
+
     try {
       const code = joinCode.trim().toUpperCase();
-      const data = await request("/api/session/join", { method: "POST", body: JSON.stringify({ sessionCode: code, name: displayName || "Participant", avatar }) });
-      setStoredIdentity(code, { participantToken: data.participantToken, isHost: false, name: data.name, avatar });
+
+      const data = await request("/api/session/join", {
+        method: "POST",
+        body: JSON.stringify({
+          sessionCode: code,
+          name: displayName || "Participant",
+          avatar,
+        }),
+      });
+
+      setStoredIdentity(code, {
+        participantToken: data.participantToken,
+        isHost: false,
+        name: data.name,
+        avatar,
+      });
+
       setSessionCode(code);
+      setJoinCode(code);
       window.history.replaceState({}, "", `?session=${code}`);
       await refreshState(code);
     } catch (e) {
@@ -93,8 +178,17 @@ export default function AppClient() {
 
   async function submitVote(value: string) {
     if (!sessionCode || !identity?.participantToken) return;
+
     try {
-      await request("/api/vote", { method: "POST", body: JSON.stringify({ sessionCode, participantToken: identity.participantToken, value }) });
+      await request("/api/vote", {
+        method: "POST",
+        body: JSON.stringify({
+          sessionCode,
+          participantToken: identity.participantToken,
+          value,
+        }),
+      });
+
       await refreshState();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not submit vote");
@@ -103,16 +197,28 @@ export default function AppClient() {
 
   async function hostAction(kind: "reveal" | "reset" | "next") {
     if (!identity?.hostToken) return;
-    const route = kind === "reveal" ? "/api/round/reveal" : kind === "reset" ? "/api/round/reset" : "/api/round/next";
+
+    const route =
+      kind === "reveal"
+        ? "/api/round/reveal"
+        : kind === "reset"
+        ? "/api/round/reset"
+        : "/api/round/next";
+
     try {
-      await request(route, { method: "POST", headers: { "X-Host-Token": identity.hostToken }, body: JSON.stringify({ sessionCode, issueTitle }) });
+      await request(route, {
+        method: "POST",
+        headers: { "X-Host-Token": identity.hostToken },
+        body: JSON.stringify({ sessionCode, issueTitle }),
+      });
+
       await refreshState();
     } catch (e) {
       setError(e instanceof Error ? e.message : `Could not ${kind} round`);
     }
   }
 
-  if (!sessionCode || !state) {
+  if (!sessionCode || shouldShowJoinScreen || !state) {
     return (
       <div className="page">
         <div className="shell">
@@ -120,28 +226,46 @@ export default function AppClient() {
             <h1>Planning Poker</h1>
             <p className="smallMuted">Next.js + Supabase + Vercel starter.</p>
           </header>
+
           <div className="grid">
-            <form className="panel" onSubmit={handleCreate}>
-              <h2>Start a session</h2>
-              <label>Session title</label>
-              <input value={sessionTitle} onChange={(e) => setSessionTitle(e.target.value)} />
-              <label>Your name</label>
-              <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-              <label>First issue title</label>
-              <input value={issueTitle} onChange={(e) => setIssueTitle(e.target.value)} />
-              <label>Avatar</label>
-              <div className="avatarRow">
-                {AVATARS.map((key) => (
-                  <button type="button" key={key} className={`avatarButton ${avatar === key ? "selected" : ""}`} onClick={() => setAvatar(key)}>
-                    <span>{avatarEmoji(key)}</span><small>{key}</small>
-                  </button>
-                ))}
+            {!shouldShowJoinScreen ? (
+              <form className="panel" onSubmit={handleCreate}>
+                <h2>Start a session</h2>
+                <label>Session title</label>
+                <input value={sessionTitle} onChange={(e) => setSessionTitle(e.target.value)} />
+                <label>Your name</label>
+                <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+                <label>First issue title</label>
+                <input value={issueTitle} onChange={(e) => setIssueTitle(e.target.value)} />
+                <label>Avatar</label>
+                <div className="avatarRow">
+                  {AVATARS.map((key) => (
+                    <button
+                      type="button"
+                      key={key}
+                      className={`avatarButton ${avatar === key ? "selected" : ""}`}
+                      onClick={() => setAvatar(key)}
+                    >
+                      <span>{avatarEmoji(key)}</span>
+                      <small>{key}</small>
+                    </button>
+                  ))}
+                </div>
+                <button className="primary" disabled={loading}>
+                  Create session
+                </button>
+              </form>
+            ) : (
+              <div className="panel">
+                <h2>Join session {sessionCode}</h2>
+                <p className="smallMuted">
+                  Enter your name and pick an avatar to join this planning poker session.
+                </p>
               </div>
-              <button className="primary" disabled={loading}>Create session</button>
-            </form>
+            )}
 
             <form className="panel" onSubmit={handleJoin}>
-              <h2>Join a session</h2>
+              <h2>{shouldShowJoinScreen ? "Join this session" : "Join a session"}</h2>
               <label>Session code</label>
               <input value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} />
               <label>Your name</label>
@@ -149,14 +273,23 @@ export default function AppClient() {
               <label>Avatar</label>
               <div className="avatarRow">
                 {AVATARS.map((key) => (
-                  <button type="button" key={key} className={`avatarButton ${avatar === key ? "selected" : ""}`} onClick={() => setAvatar(key)}>
-                    <span>{avatarEmoji(key)}</span><small>{key}</small>
+                  <button
+                    type="button"
+                    key={key}
+                    className={`avatarButton ${avatar === key ? "selected" : ""}`}
+                    onClick={() => setAvatar(key)}
+                  >
+                    <span>{avatarEmoji(key)}</span>
+                    <small>{key}</small>
                   </button>
                 ))}
               </div>
-              <button className="primary" disabled={loading}>Join session</button>
+              <button className="primary" disabled={loading}>
+                Join session
+              </button>
             </form>
           </div>
+
           {error ? <div className="error">{error}</div> : null}
         </div>
       </div>
@@ -171,11 +304,21 @@ export default function AppClient() {
         <div className="topbar">
           <div>
             <h1>{state.session.title}</h1>
-            <p>Session code: <strong>{state.session.session_code}</strong> · Round {state.round.round_number}</p>
+            <p>
+              Session code: <strong>{state.session.session_code}</strong> · Round{" "}
+              {state.round.round_number}
+            </p>
           </div>
           <div className="actionsInline">
             <button onClick={() => navigator.clipboard.writeText(shareUrl)}>Copy link</button>
-            <button onClick={() => { localStorage.removeItem(`pp:${sessionCode}`); window.location.href = window.location.pathname; }}>Leave</button>
+            <button
+              onClick={() => {
+                localStorage.removeItem(`pp:${sessionCode}`);
+                window.location.href = window.location.pathname;
+              }}
+            >
+              Leave
+            </button>
           </div>
         </div>
 
@@ -184,10 +327,21 @@ export default function AppClient() {
         <div className="grid session-grid">
           <section className="panel">
             <h2>Issue</h2>
-            <input value={issueTitle} onChange={(e) => setIssueTitle(e.target.value)} placeholder={state.round.issue_title || "Issue title"} disabled={!identity?.hostToken} />
+            <input
+              value={issueTitle}
+              onChange={(e) => setIssueTitle(e.target.value)}
+              placeholder={state.round.issue_title || "Issue title"}
+              disabled={!identity?.hostToken}
+            />
+
             <div className="cards">
               {CARD_VALUES.map((value) => (
-                <button key={value} className={`card ${state.myVote === value ? "selected" : ""}`} onClick={() => submitVote(value)} disabled={state.round.is_revealed}>
+                <button
+                  key={value}
+                  className={`card ${state.myVote === value ? "selected" : ""}`}
+                  onClick={() => submitVote(value)}
+                  disabled={state.round.is_revealed}
+                >
                   {value}
                 </button>
               ))}
@@ -214,7 +368,9 @@ export default function AppClient() {
                   ))}
                 </div>
               </div>
-            ) : <p className="hint">Votes stay hidden until the host reveals them.</p>}
+            ) : (
+              <p className="hint">Votes stay hidden until the host reveals them.</p>
+            )}
           </section>
 
           <aside className="panel">
@@ -222,16 +378,29 @@ export default function AppClient() {
             <div className="participantList">
               {state.participants.map((participant) => (
                 <div key={participant.id} className="participant">
-                  <div><span>{avatarEmoji(participant.avatar)} </span><strong>{participant.name}</strong>{participant.is_host ? <small> Host</small> : null}</div>
+                  <div>
+                    <span>{avatarEmoji(participant.avatar)} </span>
+                    <strong>{participant.name}</strong>
+                    {participant.is_host ? <small> Host</small> : null}
+                  </div>
                   <div className={`status ${participant.has_voted ? "statusReady" : ""}`}>
-                    {state.round.is_revealed ? participant.vote_value || "—" : participant.has_voted ? "Voted" : "Waiting"}
+                    {state.round.is_revealed
+                      ? participant.vote_value || "—"
+                      : participant.has_voted
+                      ? "Voted"
+                      : "Waiting"}
                   </div>
                 </div>
               ))}
             </div>
+
             <div className="meta">
-              <p><strong>Your vote:</strong> {state.myVote || "Not voted yet"}</p>
-              <p><strong>Share:</strong> {shareUrl}</p>
+              <p>
+                <strong>Your vote:</strong> {state.myVote || "Not voted yet"}
+              </p>
+              <p>
+                <strong>Share:</strong> {shareUrl}
+              </p>
             </div>
           </aside>
         </div>
