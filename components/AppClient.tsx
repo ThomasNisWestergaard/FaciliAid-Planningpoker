@@ -218,6 +218,31 @@ export default function AppClient() {
     }
   }
 
+  const unanimousVote = useMemo(() => {
+    if (!state?.round.is_revealed) return null;
+
+    const countedVotes = state.participants
+      .map((participant) => participant.vote_value)
+      .filter((value): value is string => !!value && value !== "I won't vote");
+
+    if (countedVotes.length === 0) return null;
+
+    const firstValue = countedVotes[0];
+    const allSame = countedVotes.every((value) => value === firstValue);
+
+    return allSame ? firstValue : null;
+  }, [state]);
+
+  const rainingShirts = useMemo(() => {
+    return Array.from({ length: 24 }, (_, index) => ({
+      id: index,
+      left: `${(index * 97) % 100}%`,
+      delay: `${(index % 8) * 0.35}s`,
+      duration: `${4 + (index % 5) * 0.6}s`,
+      size: `${24 + (index % 4) * 8}px`,
+    }));
+  }, []);
+
   if (!sessionCode || shouldShowJoinScreen || !state) {
     return (
       <div className="page">
@@ -300,6 +325,26 @@ export default function AppClient() {
 
   return (
     <div className="page">
+      {unanimousVote ? (
+        <div className="shirtRainOverlay" aria-hidden="true">
+          {rainingShirts.map((shirt) => (
+            <span
+              key={shirt.id}
+              className="shirtRainItem"
+              style={{
+                left: shirt.left,
+                animationDelay: shirt.delay,
+                animationDuration: shirt.duration,
+                fontSize: shirt.size,
+              }}
+            >
+              👕
+            </span>
+          ))}
+          <div className="shirtRainBanner">Perfect alignment on {unanimousVote}</div>
+        </div>
+      ) : null}
+
       <div className="shell">
         <div className="topbar">
           <div>
@@ -314,7 +359,7 @@ export default function AppClient() {
             <button
               onClick={() => {
                 localStorage.removeItem(`pp:${sessionCode}`);
-                window.location.href = window.location.pathname;
+                window.location.href = `${window.location.pathname}?session=${sessionCode}`;
               }}
             >
               Leave
@@ -401,6 +446,11 @@ export default function AppClient() {
               <p>
                 <strong>Share:</strong> {shareUrl}
               </p>
+              {unanimousVote ? (
+                <p>
+                  <strong>Consensus:</strong> {unanimousVote}
+                </p>
+              ) : null}
             </div>
           </aside>
         </div>
