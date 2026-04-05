@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AVATARS, avatarEmoji, CARD_VALUES } from "@/lib/constants";
 
 type StateResponse = {
@@ -71,6 +71,9 @@ export default function AppClient() {
   const [state, setState] = useState<StateResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showShirtRain, setShowShirtRain] = useState(false);
+  const rainTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastRevealKeyRef = useRef<string>("");
 
   const identity = useMemo(
     () => (sessionCode ? getStoredIdentity(sessionCode) : null),
@@ -105,6 +108,14 @@ export default function AppClient() {
 
     return () => clearInterval(poll);
   }, [sessionCode, identity?.participantToken]);
+
+  useEffect(() => {
+    return () => {
+      if (rainTimeoutRef.current) {
+        clearTimeout(rainTimeoutRef.current);
+      }
+    };
+  }, []);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -233,12 +244,40 @@ export default function AppClient() {
     return allSame ? firstValue : null;
   }, [state]);
 
+  useEffect(() => {
+    if (!state?.round) return;
+
+    const revealKey = `${state.round.id}-${state.round.is_revealed}-${unanimousVote ?? "none"}`;
+
+    if (state.round.is_revealed && unanimousVote && lastRevealKeyRef.current !== revealKey) {
+      lastRevealKeyRef.current = revealKey;
+      setShowShirtRain(true);
+
+      if (rainTimeoutRef.current) {
+        clearTimeout(rainTimeoutRef.current);
+      }
+
+      rainTimeoutRef.current = setTimeout(() => {
+        setShowShirtRain(false);
+      }, 4000);
+    }
+
+    if (!state.round.is_revealed) {
+      setShowShirtRain(false);
+      lastRevealKeyRef.current = "";
+      if (rainTimeoutRef.current) {
+        clearTimeout(rainTimeoutRef.current);
+        rainTimeoutRef.current = null;
+      }
+    }
+  }, [state?.round, unanimousVote]);
+
   const rainingShirts = useMemo(() => {
-    return Array.from({ length: 24 }, (_, index) => ({
+    return Array.from({ length: 28 }, (_, index) => ({
       id: index,
-      left: `${(index * 97) % 100}%`,
-      delay: `${(index % 8) * 0.35}s`,
-      duration: `${4 + (index % 5) * 0.6}s`,
+      left: `${(index * 17) % 100}%`,
+      delay: `${(index % 7) * 0.15}s`,
+      duration: `${2.8 + (index % 5) * 0.35}s`,
       size: `${24 + (index % 4) * 8}px`,
     }));
   }, []);
@@ -325,7 +364,7 @@ export default function AppClient() {
 
   return (
     <div className="page">
-      {unanimousVote ? (
+      {showShirtRain ? (
         <div className="shirtRainOverlay" aria-hidden="true">
           {rainingShirts.map((shirt) => (
             <span
