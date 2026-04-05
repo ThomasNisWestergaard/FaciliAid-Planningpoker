@@ -1,11 +1,25 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { AVATARS, avatarEmoji, CARD_VALUES } from "@/lib/constants";
+
+type StoredIdentity = {
+  participantToken: string;
+  hostToken?: string;
+  isHost?: boolean;
+  name?: string;
+  avatar?: string;
+};
 
 type StateResponse = {
   session: { id: number; session_code: string; title: string };
-  round: { id: number; round_number: number; issue_title: string | null; is_revealed: boolean };
+  round: {
+    id: number;
+    round_number: number;
+    issue_title: string | null;
+    is_revealed: boolean;
+  };
   participants: Array<{
     id: number;
     name: string;
@@ -18,7 +32,7 @@ type StateResponse = {
   myVote: string | null;
 };
 
-function getStoredIdentity(sessionCode: string) {
+function getStoredIdentity(sessionCode: string): StoredIdentity | null {
   try {
     const raw = localStorage.getItem(`pp:${sessionCode}`);
     return raw ? JSON.parse(raw) : null;
@@ -27,7 +41,7 @@ function getStoredIdentity(sessionCode: string) {
   }
 }
 
-function setStoredIdentity(sessionCode: string, value: unknown) {
+function setStoredIdentity(sessionCode: string, value: StoredIdentity) {
   localStorage.setItem(`pp:${sessionCode}`, JSON.stringify(value));
 }
 
@@ -57,13 +71,11 @@ async function request(path: string, init?: RequestInit) {
 }
 
 export default function AppClient() {
-  const initialCode =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("session")?.toUpperCase() || ""
-      : "";
+  const searchParams = useSearchParams();
+  const sessionFromUrl = searchParams.get("session")?.toUpperCase() || "";
 
-  const [sessionCode, setSessionCode] = useState(initialCode);
-  const [joinCode, setJoinCode] = useState(initialCode);
+  const [sessionCode, setSessionCode] = useState("");
+  const [joinCode, setJoinCode] = useState("");
   const [sessionTitle, setSessionTitle] = useState("Sprint Planning");
   const [displayName, setDisplayName] = useState("");
   const [issueTitle, setIssueTitle] = useState("");
@@ -72,8 +84,16 @@ export default function AppClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showShirtRain, setShowShirtRain] = useState(false);
+
   const rainTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastRevealKeyRef = useRef<string>("");
+  const lastRevealKeyRef = useRef("");
+
+  useEffect(() => {
+    if (sessionFromUrl) {
+      setSessionCode(sessionFromUrl);
+      setJoinCode(sessionFromUrl);
+    }
+  }, [sessionFromUrl]);
 
   const identity = useMemo(
     () => (sessionCode ? getStoredIdentity(sessionCode) : null),
@@ -282,6 +302,15 @@ export default function AppClient() {
     }));
   }, []);
 
+  const myParticipant = useMemo(() => {
+    if (!state || !identity?.participantToken) return null;
+    return (
+      state.participants.find(
+        (participant) => participant.participant_token === identity.participantToken
+      ) || null
+    );
+  }, [state, identity?.participantToken]);
+
   if (!sessionCode || shouldShowJoinScreen || !state) {
     return (
       <div className="page">
@@ -479,6 +508,9 @@ export default function AppClient() {
             </div>
 
             <div className="meta">
+              <p>
+                <strong>You:</strong> {myParticipant?.name || identity?.name || "Unknown"}
+              </p>
               <p>
                 <strong>Your vote:</strong> {state.myVote || "Not voted yet"}
               </p>
