@@ -76,7 +76,7 @@ export default function AppClient() {
 
   const [sessionCode, setSessionCode] = useState("");
   const [joinCode, setJoinCode] = useState("");
-  const [sessionTitle, setSessionTitle] = useState("Sprint Planning");
+  const [sessionTitle, setSessionTitle] = useState("FaciliAid: Planning Poker");
   const [displayName, setDisplayName] = useState("");
   const [issueTitle, setIssueTitle] = useState("");
   const [avatar, setAvatar] = useState<string>(AVATARS[0]);
