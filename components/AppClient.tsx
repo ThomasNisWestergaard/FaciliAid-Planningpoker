@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { AVATARS, avatarEmoji, CARD_VALUES } from "@/lib/constants";
 
 type StoredIdentity = {
@@ -11,6 +10,8 @@ type StoredIdentity = {
   name?: string;
   avatar?: string;
 };
+
+type AppMode = "home" | "join";
 
 type StateResponse = {
   session: { id: number; session_code: string; title: string };
@@ -70,13 +71,16 @@ async function request(path: string, init?: RequestInit) {
   return data;
 }
 
-export default function AppClient() {
-  const searchParams = useSearchParams();
-  const sessionFromUrl = searchParams.get("session")?.toUpperCase() || "";
-
-  const [sessionCode, setSessionCode] = useState("");
-  const [joinCode, setJoinCode] = useState("");
-  const [sessionTitle, setSessionTitle] = useState("FaciliAid: Planning Poker");
+export default function AppClient({
+  mode,
+  initialSessionCode = "",
+}: {
+  mode: AppMode;
+  initialSessionCode?: string;
+}) {
+  const [sessionCode, setSessionCode] = useState(initialSessionCode.toUpperCase());
+  const [joinCode, setJoinCode] = useState(initialSessionCode.toUpperCase());
+  const [sessionTitle, setSessionTitle] = useState("Sprint Planning");
   const [displayName, setDisplayName] = useState("");
   const [issueTitle, setIssueTitle] = useState("");
   const [avatar, setAvatar] = useState<string>(AVATARS[0]);
@@ -89,11 +93,9 @@ export default function AppClient() {
   const lastRevealKeyRef = useRef("");
 
   useEffect(() => {
-    if (sessionFromUrl) {
-      setSessionCode(sessionFromUrl);
-      setJoinCode(sessionFromUrl);
-    }
-  }, [sessionFromUrl]);
+    setSessionCode(initialSessionCode.toUpperCase());
+    setJoinCode(initialSessionCode.toUpperCase());
+  }, [initialSessionCode]);
 
   const identity = useMemo(
     () => (sessionCode ? getStoredIdentity(sessionCode) : null),
@@ -101,7 +103,7 @@ export default function AppClient() {
   );
 
   const hasIdentity = !!identity?.participantToken;
-  const shouldShowJoinScreen = !!sessionCode && !hasIdentity;
+  const shouldShowJoinForm = mode === "join" && !hasIdentity;
 
   async function refreshState(code = sessionCode) {
     if (!code) return;
@@ -131,9 +133,7 @@ export default function AppClient() {
 
   useEffect(() => {
     return () => {
-      if (rainTimeoutRef.current) {
-        clearTimeout(rainTimeoutRef.current);
-      }
+      if (rainTimeoutRef.current) clearTimeout(rainTimeoutRef.current);
     };
   }, []);
 
@@ -163,7 +163,7 @@ export default function AppClient() {
 
       setSessionCode(data.sessionCode);
       setJoinCode(data.sessionCode);
-      window.history.replaceState({}, "", `?session=${data.sessionCode}`);
+      window.history.replaceState({}, "", `/`);
       await refreshState(data.sessionCode);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create session");
@@ -198,7 +198,7 @@ export default function AppClient() {
 
       setSessionCode(code);
       setJoinCode(code);
-      window.history.replaceState({}, "", `?session=${code}`);
+      window.history.replaceState({}, "", `/join/${code}`);
       await refreshState(code);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not join session");
@@ -259,9 +259,7 @@ export default function AppClient() {
     if (countedVotes.length === 0) return null;
 
     const firstValue = countedVotes[0];
-    const allSame = countedVotes.every((value) => value === firstValue);
-
-    return allSame ? firstValue : null;
+    return countedVotes.every((value) => value === firstValue) ? firstValue : null;
   }, [state]);
 
   useEffect(() => {
@@ -273,9 +271,7 @@ export default function AppClient() {
       lastRevealKeyRef.current = revealKey;
       setShowShirtRain(true);
 
-      if (rainTimeoutRef.current) {
-        clearTimeout(rainTimeoutRef.current);
-      }
+      if (rainTimeoutRef.current) clearTimeout(rainTimeoutRef.current);
 
       rainTimeoutRef.current = setTimeout(() => {
         setShowShirtRain(false);
@@ -292,15 +288,17 @@ export default function AppClient() {
     }
   }, [state?.round, unanimousVote]);
 
-  const rainingShirts = useMemo(() => {
-    return Array.from({ length: 28 }, (_, index) => ({
-      id: index,
-      left: `${(index * 17) % 100}%`,
-      delay: `${(index % 7) * 0.15}s`,
-      duration: `${2.8 + (index % 5) * 0.35}s`,
-      size: `${24 + (index % 4) * 8}px`,
-    }));
-  }, []);
+  const rainingShirts = useMemo(
+    () =>
+      Array.from({ length: 28 }, (_, index) => ({
+        id: index,
+        left: `${(index * 17) % 100}%`,
+        delay: `${(index % 7) * 0.15}s`,
+        duration: `${2.8 + (index % 5) * 0.35}s`,
+        size: `${24 + (index % 4) * 8}px`,
+      })),
+    []
+  );
 
   const myParticipant = useMemo(() => {
     if (!state || !identity?.participantToken) return null;
@@ -311,54 +309,80 @@ export default function AppClient() {
     );
   }, [state, identity?.participantToken]);
 
-  if (!sessionCode || shouldShowJoinScreen || !state) {
+  const shareUrl =
+    typeof window !== "undefined" && sessionCode
+      ? `${window.location.origin}/join/${sessionCode}`
+      : "";
+
+  if (mode === "home" && (!sessionCode || !state)) {
     return (
       <div className="page">
         <div className="shell">
           <header className="hero">
             <h1>Planning Poker</h1>
-            <p className="smallMuted">Next.js + Supabase + Vercel starter.</p>
+            <p className="smallMuted">Create a session and share the join link.</p>
           </header>
 
           <div className="grid">
-            {!shouldShowJoinScreen ? (
-              <form className="panel" onSubmit={handleCreate}>
-                <h2>Start a session</h2>
-                <label>Session title</label>
-                <input value={sessionTitle} onChange={(e) => setSessionTitle(e.target.value)} />
-                <label>Your name</label>
-                <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-                <label>First issue title</label>
-                <input value={issueTitle} onChange={(e) => setIssueTitle(e.target.value)} />
-                <label>Avatar</label>
-                <div className="avatarRow">
-                  {AVATARS.map((key) => (
-                    <button
-                      type="button"
-                      key={key}
-                      className={`avatarButton ${avatar === key ? "selected" : ""}`}
-                      onClick={() => setAvatar(key)}
-                    >
-                      <span>{avatarEmoji(key)}</span>
-                      <small>{key}</small>
-                    </button>
-                  ))}
-                </div>
-                <button className="primary" disabled={loading}>
-                  Create session
-                </button>
-              </form>
-            ) : (
-              <div className="panel">
-                <h2>Join session {sessionCode}</h2>
-                <p className="smallMuted">
-                  Enter your name and pick an avatar to join this planning poker session.
-                </p>
+            <form className="panel" onSubmit={handleCreate}>
+              <h2>Start a session</h2>
+              <label>Session title</label>
+              <input value={sessionTitle} onChange={(e) => setSessionTitle(e.target.value)} />
+              <label>Your name</label>
+              <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+              <label>First issue title</label>
+              <input value={issueTitle} onChange={(e) => setIssueTitle(e.target.value)} />
+              <label>Avatar</label>
+              <div className="avatarRow">
+                {AVATARS.map((key) => (
+                  <button
+                    type="button"
+                    key={key}
+                    className={`avatarButton ${avatar === key ? "selected" : ""}`}
+                    onClick={() => setAvatar(key)}
+                  >
+                    <span>{avatarEmoji(key)}</span>
+                    <small>{key}</small>
+                  </button>
+                ))}
               </div>
-            )}
+              <button className="primary" disabled={loading}>
+                Create session
+              </button>
+            </form>
+
+            <div className="panel">
+              <h2>How it works</h2>
+              <p className="smallMuted">
+                Create a session here, then share the participant link. Participants join on a
+                separate page and enter their name there.
+              </p>
+            </div>
+          </div>
+
+          {error ? <div className="error">{error}</div> : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "join" && shouldShowJoinForm) {
+    return (
+      <div className="page">
+        <div className="shell">
+          <header className="hero">
+            <h1>Join session {sessionCode}</h1>
+            <p className="smallMuted">Enter your name and pick an avatar.</p>
+          </header>
+
+          <div className="grid">
+            <div className="panel">
+              <h2>Session code</h2>
+              <p>{sessionCode}</p>
+            </div>
 
             <form className="panel" onSubmit={handleJoin}>
-              <h2>{shouldShowJoinScreen ? "Join this session" : "Join a session"}</h2>
+              <h2>Join this session</h2>
               <label>Session code</label>
               <input value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} />
               <label>Your name</label>
@@ -389,7 +413,16 @@ export default function AppClient() {
     );
   }
 
-  const shareUrl = `${window.location.origin}${window.location.pathname}?session=${sessionCode}`;
+  if (!state) {
+    return (
+      <div className="page">
+        <div className="shell">
+          <div className="panel">Loading session…</div>
+          {error ? <div className="error">{error}</div> : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page">
@@ -427,7 +460,11 @@ export default function AppClient() {
             <button
               onClick={() => {
                 localStorage.removeItem(`pp:${sessionCode}`);
-                window.location.href = `${window.location.pathname}?session=${sessionCode}`;
+                if (mode === "join") {
+                  window.location.href = `/join/${sessionCode}`;
+                } else {
+                  window.location.href = "/";
+                }
               }}
             >
               Leave
