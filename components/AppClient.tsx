@@ -272,7 +272,7 @@ export default function AppClient({
 
       rainTimeoutRef.current = setTimeout(() => {
         setShowShirtRain(false);
-      }, 4000);
+      }, 8000);
     }
 
     if (!state.round.is_revealed) {
@@ -291,7 +291,7 @@ export default function AppClient({
         id: index,
         left: `${(index * 17) % 100}%`,
         delay: `${(index % 7) * 0.15}s`,
-        duration: `${2.8 + (index % 5) * 0.35}s`,
+        duration: `${4.5 + (index % 5) * 0.35}s`,
         size: `${24 + (index % 4) * 8}px`,
       })),
     []
