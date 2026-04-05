@@ -2,7 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Planning Poker",
+  title: "FaciliAid: Planning Poker",
   description: "Planning poker starter for Supabase + Vercel",
 };
 
