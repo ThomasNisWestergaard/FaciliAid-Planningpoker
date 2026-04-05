@@ -97,10 +97,7 @@ export default function AppClient({
     setJoinCode(initialSessionCode.toUpperCase());
   }, [initialSessionCode]);
 
-  const identity = useMemo(
-    () => (sessionCode ? getStoredIdentity(sessionCode) : null),
-    [sessionCode]
-  );
+  const identity = sessionCode ? getStoredIdentity(sessionCode) : null;
 
   const hasIdentity = !!identity?.participantToken;
   const shouldShowJoinForm = mode === "join" && !hasIdentity;
